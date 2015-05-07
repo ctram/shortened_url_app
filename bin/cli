@@ -1,0 +1,72 @@
+require 'launchy'
+
+class UrlShortenerCLI
+  def run
+    @user = user_object_from_user
+    case user_action
+    when 0
+      create_shortened_url
+    when 1
+      visit_shortened_url
+    end
+  end
+
+  def prompt(msg)
+    puts msg
+    gets.chomp
+  end
+
+  def user_object_from_user
+    email = prompt('Input your email: ')
+    User.find_by_email!(email)
+  rescue ActiveRecord::RecordNotFound
+    puts 'No user with that email'
+    retry
+  end
+
+  def user_action
+    action = prompt(<<-PROMPT)
+What do you want to do?
+0. Create shortened URL
+1. Visit shortened URL
+    PROMPT
+    option = Integer(action)
+    raise unless [0,1].include?(option)
+  rescue
+    puts 'Please enter 0 or 1'
+    retry
+  ensure
+    return option
+  end
+
+  def create_shortened_url
+    long_url = prompt('Type in your long url')
+    topic = prompt("Select a topic:\n#{topic_name_string}")
+
+    tag_topic = TagTopic.find(topic.to_i + 1)
+    shortened_url = ShortenedURL.create_for_user_and_long_url!(@user, long_url)
+    Tagging.create(tag_topic_id: tag_topic.id, shortened_url_id: shortened_url.id)
+
+    puts "Short url is: #{shortened_url.short_url}"
+  end
+
+  def visit_shortened_url
+    url = prompt('Type in the shortened URL')
+    shortened_url = ShortenedURL.find_by_short_url!(url)
+  rescue ActiveRecord::RecordNotFound
+    puts 'No matching short url'
+    retry
+  ensure
+    Visit.record_visit!(@user, shortened_url)
+    Launchy.open(shortened_url.long_url)
+  end
+
+  def topic_name_string
+    TagTopic
+      .topic_names
+      .map.with_index { |topic, i| "#{i}. #{topic}" }
+      .join("\n")
+  end
+end
+
+UrlShortenerCLI.new.run
